@@ -392,6 +392,9 @@ class Scheduler:
                 "Profiling enabled. Traces will be saved to: %s",
                 self.torch_profiler_trace_dir,
             )
+            print(
+                f"Profiling enabled. Traces will be saved to: {self.torch_profiler_trace_dir}"
+            )
             self.profiler = torch.profiler.profile(
                 activities=[
                     torch.profiler.ProfilerActivity.CPU,
@@ -443,6 +446,12 @@ class Scheduler:
                 ),
             ]
         )
+
+        # Batch logging
+        os.makedirs('/tmp/sglang', exist_ok=True)
+        from uuid import uuid4
+        self.batch_log_file = open(f'/tmp/sglang/{uuid4()}.log', 'w')
+        self.batch_log = []
 
     def watchdog_thread(self):
         """A watch dog thread that will try to kill the server itself if one batch takes too long."""
@@ -496,6 +505,13 @@ class Scheduler:
             batch = self.get_next_batch_to_run()
             self.cur_batch = batch
 
+            # Log the batch
+            log_content = {
+                "ts": time.time(),
+                "batch_size": batch.batch_size() if batch else 0,
+            }
+            self.batch_log.append(log_content)
+
             if batch:
                 result = self.run_batch(batch)
                 self.result_queue.append((batch.copy(), result))
@@ -521,6 +537,10 @@ class Scheduler:
                 # When the server is idle, so self-check and re-init some states
                 self.check_memory()
                 self.new_token_ratio = self.init_new_token_ratio
+                if len(self.batch_log) > 0:
+                    for log in self.batch_log:
+                        self.batch_log_file.write(f"{log}\n")
+                    self.batch_log = []
 
             self.last_batch = batch
 
@@ -1697,6 +1717,7 @@ class Scheduler:
         return ResumeMemoryOccupationReqOutput()
 
     def profile(self, recv_req: ProfileReq):
+        print(f"Profiler is {recv_req}")
         if recv_req == ProfileReq.START_PROFILE:
             self.start_profile()
         else:
@@ -1705,16 +1726,23 @@ class Scheduler:
     def start_profile(self) -> None:
         if self.profiler is None:
             raise RuntimeError("Profiler is not enabled.")
+        # Reinitialize the profiler
+        print("Reinitialize the profiler")
+        self.profiler = torch.profiler.profile(
+            with_stack=True,
+        )
+        print("Profiler is started")
         self.profiler.start()
 
     def stop_profile(self) -> None:
         if self.profiler is None:
             raise RuntimeError("Profiler is not enabled.")
+        print("Profiler is done")
         self.profiler.stop()
         self.profiler.export_chrome_trace(
             self.torch_profiler_trace_dir + "/" + str(time.time()) + ".trace.json.gz"
         )
-        logger.info("Profiler is done")
+        print("Profiler is done")
 
     def open_session(self, recv_req: OpenSessionReqInput):
         # handle error

@@ -209,6 +209,7 @@ class Engine:
     def shutdown(self):
         """Shutdown the engine"""
         kill_process_tree(os.getpid(), include_parent=False)
+        return True
 
     def start_profile(self):
         self.tokenizer_manager.start_profile()

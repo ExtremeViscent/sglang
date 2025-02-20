@@ -107,6 +107,10 @@ class TpModelWorker:
             ),
             self.model_runner.req_to_token_pool.size,
         )
+        print(f'Max running requests: {self.max_running_requests}',
+              f'Max total num tokens: {self.max_total_num_tokens}',
+              f'Max prefill tokens: {self.max_prefill_tokens}',
+        )
         self.max_req_len = min(
             self.model_config.context_len - 1,
             self.max_total_num_tokens - 1,
