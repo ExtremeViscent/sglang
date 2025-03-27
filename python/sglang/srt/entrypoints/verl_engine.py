@@ -131,10 +131,16 @@ class VerlEngine:
     def release_memory_occupation(self):
         if self._tp_rank == 0:
             self._engine.release_memory_occupation()
+        dist.barrier(group=self._device_mesh_cpu.get_group())
+        print(f"release_memory_occupation {self._tp_rank}")
+        return None
 
     def resume_memory_occupation(self):
         if self._tp_rank == 0:
             self._engine.resume_memory_occupation()
+        dist.barrier(group=self._device_mesh_cpu.get_group())
+        print(f"resume_memory_occupation {self._tp_rank}")
+        return None
 
     def shutdown(self):
         if self._engine is not None:

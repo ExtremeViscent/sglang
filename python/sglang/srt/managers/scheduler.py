@@ -44,6 +44,7 @@ from sglang.srt.managers.io_struct import (
     BatchEmbeddingOut,
     BatchTokenIDOut,
     CloseSessionReqInput,
+    ClearQueueReq,
     FlushCacheReq,
     GetInternalStateReq,
     GetInternalStateReqOutput,
@@ -460,8 +461,11 @@ class Scheduler:
                 (ResumeMemoryOccupationReqInput, self.resume_memory_occupation),
                 (ProfileReq, self.profile),
                 (GetInternalStateReq, self.get_internal_state),
+                (ClearQueueReq, self.clear_queue),
             ]
         )
+
+        self.pause_flag = False
 
     def watchdog_thread(self):
         """A watch dog thread that will try to kill the server itself if one forward batch takes too long."""
@@ -522,6 +526,10 @@ class Scheduler:
         while True:
             recv_reqs = self.recv_requests()
             self.process_input_requests(recv_reqs)
+
+            if self.pause_flag:
+                time.sleep(1)
+                continue
 
             batch = self.get_next_batch_to_run()
             self.cur_batch = batch
@@ -1952,6 +1960,7 @@ class Scheduler:
             ret["avg_spec_accept_length"] = (
                 self.cum_spec_accept_length / self.cum_spec_accept_count
             )
+        ret["is_idle"] = not self.cur_batch and not self.running_batch
 
         if RECORD_STEP_TIME:
             ret["step_time_dict"] = self.step_time_dict
@@ -2009,6 +2018,19 @@ class Scheduler:
                     req.to_abort = True
                     break
 
+    def clear_queue(self, recv_req: ClearQueueReq):
+        print(f'Clear queue')
+        self.waiting_queue = []
+        if self.running_batch:
+            for req in self.running_batch.reqs:
+                logger.debug(f"Abort running request. {req.rid=}")
+                req.to_abort = True
+        # self.last_batch = None
+        # self.cur_batch = None
+        # self.flush_cache()
+        # self.tp_worker.clear_queue()
+        return
+
     def update_weights_from_disk(self, recv_req: UpdateWeightFromDiskReqInput):
         """In-place update of the weights from disk."""
         success, message = self.tp_worker.update_weights_from_disk(recv_req)
@@ -2054,19 +2076,35 @@ class Scheduler:
         return GetWeightsByNameReqOutput(parameter)
 
     def release_memory_occupation(self, recv_req: ReleaseMemoryOccupationReqInput):
+        self.pause_flag = True
+        # self.clear_queue(None)
+        print(f'Before release memory occupation, GPU memory allocated: {torch.cuda.memory_allocated() / 1e9}GB, reserved: {torch.cuda.memory_reserved() / 1e9}GB')
         self.stashed_model_static_state = _export_static_state(
             self.tp_worker.worker.model_runner.model
         )
+        # for i in range(len(self.stashed_model_static_state["buffers"])):
+        #     name, buffer, shape = self.stashed_model_static_state["buffers"][i]
+        #     self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cpu'), shape)
+        # for name, buffer in self.tp_worker.worker.model_runner.model.named_buffers():
+        #     buffer.resize_(0)
         self.memory_saver_adapter.pause()
         self.flush_cache()
+        torch.cuda.empty_cache()
+        print(f'After release memory occupation, GPU memory allocated: {torch.cuda.memory_allocated() / 1e9}GB, reserved: {torch.cuda.memory_reserved() / 1e9}GB')
         return ReleaseMemoryOccupationReqOutput()
 
     def resume_memory_occupation(self, recv_req: ResumeMemoryOccupationReqInput):
+        print(f'Before resume memory occupation, GPU memory allocated: {torch.cuda.memory_allocated() / 1e9}GB, reserved: {torch.cuda.memory_reserved() / 1e9}GB')
+        torch.cuda.empty_cache()
         self.memory_saver_adapter.resume()
+        # for i in range(len(self.stashed_model_static_state["buffers"])):
+        #     name, buffer, shape = self.stashed_model_static_state["buffers"][i]
+        #     self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cuda'), shape)
         _import_static_state(
             self.tp_worker.worker.model_runner.model, self.stashed_model_static_state
         )
         del self.stashed_model_static_state
+        self.pause_flag = False
         return ResumeMemoryOccupationReqOutput()
 
     def profile(self, recv_req: ProfileReq):
@@ -2192,14 +2230,16 @@ def is_health_check_generate_req(recv_req):
 def _export_static_state(model):
     return dict(
         buffers=[
-            (name, buffer.detach().clone()) for name, buffer in model.named_buffers()
+            (name, buffer.detach().clone(), buffer.shape) for name, buffer in model.named_buffers()
         ]
     )
 
 
 def _import_static_state(model, static_params):
     self_named_buffers = dict(model.named_buffers())
-    for name, tensor in static_params["buffers"]:
+    for name, tensor, shape in static_params["buffers"]:
+        if self_named_buffers[name].shape != shape:
+            self_named_buffers[name].resize_(shape)
         self_named_buffers[name][...] = tensor
 
 

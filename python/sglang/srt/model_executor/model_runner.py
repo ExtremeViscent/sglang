@@ -310,9 +310,9 @@ class ModelRunner:
 
         # Check memory for tensor parallelism
         if self.tp_size > 1:
-            if min_per_gpu_memory < local_gpu_memory * 0.9:
+            if min_per_gpu_memory < local_gpu_memory * 0.8:
                 raise ValueError(
-                    "The memory capacity is unbalanced. Some GPUs may be occupied by other processes."
+                    f"min_per_gpu_memory={min_per_gpu_memory:.2f} GB, local_gpu_memory={local_gpu_memory:.2f} GB"
                 )
 
         logger.info(
@@ -557,6 +557,8 @@ class ModelRunner:
         named_tensors: List[Tuple[str, Union[torch.Tensor, "LocalSerializedTensor"]]],
         load_format: Optional[str] = None,
     ):
+        # del named_tensors
+        # return True, "Success"
         named_tensors = [
             (name, _unwrap_tensor(tensor, tp_rank=self.tp_rank))
             for name, tensor in named_tensors

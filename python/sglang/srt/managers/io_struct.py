@@ -589,6 +589,9 @@ class AbortReq:
     # The request id
     rid: str
 
+@dataclass
+class ClearQueueReq:
+    pass
 
 @dataclass
 class GetInternalStateReq:

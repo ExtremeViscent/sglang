@@ -61,6 +61,7 @@ from sglang.srt.managers.io_struct import (
     BatchStrOut,
     BatchTokenIDOut,
     CloseSessionReqInput,
+    ClearQueueReq,
     ConfigureLoggingReq,
     EmbeddingReqInput,
     FlushCacheReq,
@@ -597,6 +598,10 @@ class TokenizerManager:
             return
         del self.rid_to_state[rid]
         req = AbortReq(rid)
+        self.send_to_scheduler.send_pyobj(req)
+
+    def clear_queue(self):
+        req = ClearQueueReq()
         self.send_to_scheduler.send_pyobj(req)
 
     async def start_profile(

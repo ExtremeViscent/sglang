@@ -232,6 +232,12 @@ class TpModelWorkerClient:
     def get_weights_by_name(self, recv_req: GetWeightsByNameReqInput):
         return self.worker.get_weights_by_name(recv_req)
 
+    def clear_queue(self):
+        while not self.input_queue.empty():
+            self.input_queue.get()
+        while not self.output_queue.empty():
+            self.output_queue.get()
+
     def __delete__(self):
         self.input_queue.put((None, None))
         self.copy_queue.put((None, None, None))
