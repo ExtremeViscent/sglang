@@ -352,7 +352,8 @@ class ModelRunner:
         # Load the model
         # Remove monkey_patch when linear.py quant remove dependencies with vllm
         monkey_patch_vllm_parallel_state()
-        with self.memory_saver_adapter.region():
+        # with self.memory_saver_adapter.region():
+        if True:
             self.model = get_model(
                 model_config=self.model_config,
                 load_config=self.load_config,

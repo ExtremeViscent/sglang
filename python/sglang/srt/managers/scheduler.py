@@ -2082,11 +2082,11 @@ class Scheduler:
         self.stashed_model_static_state = _export_static_state(
             self.tp_worker.worker.model_runner.model
         )
-        # for i in range(len(self.stashed_model_static_state["buffers"])):
-        #     name, buffer, shape = self.stashed_model_static_state["buffers"][i]
-        #     self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cpu'), shape)
-        # for name, buffer in self.tp_worker.worker.model_runner.model.named_buffers():
-        #     buffer.resize_(0)
+        for i in range(len(self.stashed_model_static_state["buffers"])):
+            name, buffer, shape = self.stashed_model_static_state["buffers"][i]
+            self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cpu'), shape)
+        for name, buffer in self.tp_worker.worker.model_runner.model.named_buffers():
+            buffer.resize_(0)
         self.memory_saver_adapter.pause()
         self.flush_cache()
         torch.cuda.empty_cache()
@@ -2097,9 +2097,9 @@ class Scheduler:
         print(f'Before resume memory occupation, GPU memory allocated: {torch.cuda.memory_allocated() / 1e9}GB, reserved: {torch.cuda.memory_reserved() / 1e9}GB')
         torch.cuda.empty_cache()
         self.memory_saver_adapter.resume()
-        # for i in range(len(self.stashed_model_static_state["buffers"])):
-        #     name, buffer, shape = self.stashed_model_static_state["buffers"][i]
-        #     self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cuda'), shape)
+        for i in range(len(self.stashed_model_static_state["buffers"])):
+            name, buffer, shape = self.stashed_model_static_state["buffers"][i]
+            self.stashed_model_static_state["buffers"][i] = (name, buffer.to('cuda'), shape)
         _import_static_state(
             self.tp_worker.worker.model_runner.model, self.stashed_model_static_state
         )
