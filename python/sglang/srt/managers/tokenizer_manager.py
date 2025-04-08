@@ -201,6 +201,7 @@ class TokenizerManager:
         # Store states
         self.no_create_loop = False
         self.rid_to_state: Dict[str, ReqState] = {}
+        self.orphan_outputs = {}
         self.gracefully_exit = False
         self.last_receive_tstamp = 0
         self.dump_requests_folder = ""  # By default do not dump
@@ -485,7 +486,8 @@ class TokenizerManager:
                     else:
                         msg = f"Finish: obj={dataclass_to_string_truncated(obj, max_length, skip_names=skip_names)}, out={dataclass_to_string_truncated(out, max_length, skip_names=out_skip_names)}"
                     logger.info(msg)
-                del self.rid_to_state[obj.rid]
+                if obj.rid in self.rid_to_state:
+                    del self.rid_to_state[obj.rid]
 
                 # Check if this was an abort/error created by scheduler
                 if isinstance(out["meta_info"].get("finish_reason"), dict):
@@ -710,7 +712,8 @@ class TokenizerManager:
 
         # This means that weight sync
         # cannot run while requests are in progress.
-        async with self.model_update_lock.writer_lock:
+        # async with self.model_update_lock.writer_lock:
+        if True:
             result = (await self.update_weights_from_tensor_communicator(obj))[0]
             return result.success, result.message
 
@@ -889,6 +892,7 @@ class TokenizerManager:
         for i, rid in enumerate(recv_obj.rids):
             state = self.rid_to_state.get(rid, None)
             if state is None:
+                self.orphan_outputs[rid] = recv_obj
                 continue
 
             # Build meta_info and return value
